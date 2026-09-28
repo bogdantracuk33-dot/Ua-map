@@ -328,9 +328,12 @@ body.radar-hidden #radar-disc{ display:none; }
   #rp-hint{ padding:0 12%; font-size:12px; }
 }
 @media (max-width:720px) and (orientation:portrait){
-  .rv-body{ display:block; position:relative; }
-  #radar-stage{ position:absolute; left:0; right:0; top:4px; bottom:calc(var(--rp-h, 184px) + 12px + env(safe-area-inset-bottom, 0px)); }
-  .rv-side{ position:fixed; left:54px; right:6px; bottom:calc(6px + env(safe-area-inset-bottom, 0px)); width:auto; align-self:auto; max-height:62vh; padding:8px 10px; gap:6px; }
+  /* колонка: зверху коло, знизу панель. Ніщо не лягає одне на одне —
+     коли панель розгортається, коло просто стає меншим */
+  #radar-view{ padding:54px 6px calc(6px + env(safe-area-inset-bottom, 0px)) 58px; }
+  .rv-body{ flex-direction:column; gap:8px; }
+  #radar-stage{ flex:1 1 0; min-height:190px; }
+  .rv-side{ width:auto; flex:0 0 auto; align-self:auto; max-height:calc(100% - 198px); padding:8px 10px; gap:6px; }
   .rv-side.expanded{ padding:12px; gap:8px; }
 }
 @media (orientation:landscape) and (max-height:520px){
@@ -1761,8 +1764,6 @@ let discD = 0, dpr = 1, labelCache = {}, labelAt = 0;
 
 function radarLayoutMap(){
     if(!radarActive) return;
-    const sd = $r('rv-side');
-    if(sd && !sd.classList.contains('expanded') && sd.offsetHeight) document.documentElement.style.setProperty('--rp-h', sd.offsetHeight + 'px');
     const st = $r('radar-stage').getBoundingClientRect();
     const D = Math.max(200, Math.floor(Math.min(st.width, st.height)) - 6);
     const left = Math.round(st.left + (st.width - D)/2), top = Math.round(st.top + (st.height - D)/2);
@@ -1977,7 +1978,6 @@ function radarTogglePanel(force){
     const el = $r('rv-side'), on = force === undefined ? !el.classList.contains('expanded') : force;
     el.classList.toggle('expanded', on);
     $r('rv-expand').innerText = on ? '✕' : '⚙️';
-    if(radarActive) requestAnimationFrame(radarLayoutMap);
 }
 
 /* --- пошук: OSM Nominatim знає тип місця (місто/село/район/область) --- */
