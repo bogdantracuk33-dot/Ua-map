@@ -251,6 +251,16 @@ body::before{ content:''; position:fixed; inset:0; z-index:900; pointer-events:n
 .chat-input-row input{ flex:1; min-width:0; background:rgba(61,255,46,.05); border:1px solid var(--border); color:#fff; border-radius:0; padding:10px; font-family:inherit; font-size:14px; }
 .chat-input-row input:focus{ outline:none; border-color:var(--accent); }
 .chat-input-row button{ background:var(--accent); border:none; color:#03210a; border-radius:0; padding:0 16px; cursor:pointer; font-size:15px; font-weight:700; flex-shrink:0; clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px); }
+.chat-footnote{ margin-top:8px; font-size:11px; color:var(--muted); text-align:center; flex-shrink:0; }
+.chat-footnote a{ color:var(--accent); cursor:pointer; }
+.chat-footnote a:hover{ text-decoration:underline; }
+#chat-pinned{ flex-shrink:0; margin-bottom:8px; padding:8px 10px; background:rgba(255,176,32,.1); border-left:3px solid #ffb020; font-size:13px; line-height:1.4; position:relative; }
+#chat-pinned .cp-label{ font-size:10px; letter-spacing:.5px; color:#ffb020; font-weight:700; margin-bottom:3px; }
+#chat-pinned .cp-unpin{ position:absolute; top:6px; right:8px; cursor:pointer; color:var(--muted); font-size:13px; }
+#chat-pinned .cp-unpin:hover{ color:var(--red); }
+.msg-admin-tools{ display:inline-flex; gap:8px; margin-left:8px; opacity:.55; }
+.msg-admin-tools span{ cursor:pointer; }
+.msg-admin-tools span:hover{ opacity:1; }
 
 /* ===== FEED (slide-in panel) ===== */
 .feed-overlay{ position:fixed; inset:0; background:rgba(0,0,0,0); z-index:6500; display:none; pointer-events:none; transition:background .35s ease; }
@@ -1155,16 +1165,28 @@ body.uas-globe-on #uas-globe{ display:block; }
     <div id="chat-login" class="chat-login">
         <ur-logo variant="mark"></ur-logo>
         <h3>Увійти в чат</h3>
-        <p>Повідомлення підписані твоїм іменем з Telegram — без придуманих ніків.</p>
+        <p>Вхід через Telegram, без паролів — і одразу після нього можна буде обрати свій нік.</p>
         <a class="rp-btn primary" id="chat-login-btn" target="_blank" rel="noopener" href="#">🔑 Увійти через Telegram-бота</a>
-        <div class="rp-lbl">Без паролів: у боті просто натисни Start, і чат відкриється сам.</div>
+        <div class="rp-lbl">У боті просто натисни Start, і чат відкриється сам.</div>
         <div class="rp-status" id="chat-login-msg" style="display:none"></div>
     </div>
+    <div id="chat-nick" class="chat-login" style="display:none;">
+        <ur-logo variant="mark"></ur-logo>
+        <h3>Обери нік у чаті</h3>
+        <p>До 24 символів, без образливих чи нецензурних слів. Якщо нік уже зайнятий — запропонуємо обрати інший.</p>
+        <input type="text" id="chat-nick-field" class="rp-input" placeholder="Твій нік..." maxlength="24">
+        <button class="rp-btn primary" onclick="chatSubmitNickname()">Зберегти і зайти в чат</button>
+        <div class="rp-status" id="chat-nick-msg" style="display:none"></div>
+    </div>
     <div id="chat-box" style="display:none; flex-direction:column; flex:1; min-height:0;">
+        <div id="chat-pinned" style="display:none;"></div>
         <div id="msg-area"></div>
         <div class="chat-input-row">
             <input type="text" id="msg-field" placeholder="Повідомлення...">
             <button onclick="sendMsg()">➤</button>
+        </div>
+        <div class="chat-footnote">
+            Ти: <b id="chat-my-nick">—</b> · <a href="#" onclick="chatShowNickSetup(); return false;">змінити нік</a>
         </div>
     </div>
 </div>
@@ -3380,27 +3402,93 @@ db.ref('status/maintenance').on('value', s=> document.getElementById('conn-statu
 let chatIdentity = null; // { telegramId, name }
 let chatNonce = null;
 let chatPollTimer = null;
-// Косметичний бейдж "АДМІН" у чаті — не впливає на права запису, лише на вигляд.
-// Впиши сюди ті самі Telegram id, що й ADMIN_TELEGRAM_IDS на бекенді.
-const CHAT_ADMIN_IDS = [];
+// Ці самі Telegram id видають платний доступ до Радару (команди /grant, /revoke
+// в боті) — тепер вони ж дають права модератора в чаті: видно 🗑/📌 на будь-якому
+// повідомленні, і свої повідомлення підписані бейджем "АДМІН".
+// ПОМІТКА ПРО МЕЖІ ЦЬОГО ЗАХИСТУ: чат пише в Firebase напряму з браузера, без
+// Firebase Authentication, тому правила Realtime Database не можуть перевірити
+// "хто це" — вони або відкриті для запису всім, або закриті всім. Перевірка
+// "чи адмін" тут — тільки в інтерфейсі (ховає/показує кнопки). Технічно
+// підкований зловмисник міг би видалити чуже повідомлення напряму через консоль
+// браузера. Для публічного фан-чату це прийнятний компроміс; якщо колись
+// знадобиться справжній захист — це переробляється через Cloud Functions +
+// Firebase Auth (окрема, більша робота).
+const CHAT_ADMIN_IDS = ['6888669432', '5098847708'];
+
+/* ==== ФІЛЬТР ЛАЙКИ/ОБРАЗ ====
+   Простий фільтр за списком коренів слів — він не розуміє КОНТЕКСТ (на кого
+   спрямована лайка), тому технічно не може відрізнити "образу іншого глядача"
+   від "лайки на росіян" — обидва варіанти містять ті самі слова. Тому фільтр
+   ріже і те, і те; антиросійська лайка проходить тільки якщо її пише АДМІН
+   (адмінів фільтр не чіпає) — в іншому разі блокувати вибірково може тільки
+   людина: саме для цього й зроблено 🗑 для адмінів (пункт нижче).
+   Список короткий і легко розширюється — просто дописуй корені через |. */
+const BANNED_WORD_PATTERN = /хуй|хуе|хуї|хую|пизд|піздец|єбат|ебат|їбат|заєб|заєб|бляд|блять|мудак|мудил|довбойоб|даун|підор|підар|пидор|сволот|тварин[аи] конченн|виродок|гандон|курва|сучар|сука|сучк/i;
+function containsBannedWords(text){ return BANNED_WORD_PATTERN.test(text || ''); }
 
 function chatShowLogin(msg){
     document.getElementById('chat-login').style.display = 'flex';
+    document.getElementById('chat-nick').style.display = 'none';
     document.getElementById('chat-box').style.display = 'none';
     const m = document.getElementById('chat-login-msg');
     if(msg !== undefined){ m.innerText = msg; m.style.display = msg ? 'block' : 'none'; }
 }
+function chatNickError(msg){
+    const m = document.getElementById('chat-nick-msg');
+    m.innerText = msg; m.style.display = 'block';
+}
+function chatShowNickSetup(){
+    document.getElementById('chat-login').style.display = 'none';
+    document.getElementById('chat-nick').style.display = 'flex';
+    document.getElementById('chat-box').style.display = 'none';
+    const f = document.getElementById('chat-nick-field');
+    f.value = (chatIdentity && chatIdentity.name) || '';
+    document.getElementById('chat-nick-msg').style.display = 'none';
+}
 function chatShowBox(){
     document.getElementById('chat-login').style.display = 'none';
+    document.getElementById('chat-nick').style.display = 'none';
     document.getElementById('chat-box').style.display = 'flex';
+    document.getElementById('chat-my-nick').innerText = chatIdentity ? chatIdentity.name : '—';
 }
 function chatDisplayName(res){
     return res.name || res.firstName || res.first_name || res.username
         || ('Гість' + String(res.telegramId).slice(-4));
 }
-function chatApplySession(res){
+const normalizeNick = n => n.trim().toLowerCase();
+
+async function chatSubmitNickname(){
+    const raw = document.getElementById('chat-nick-field').value;
+    const nick = raw.trim();
+    if(!nick){ chatNickError('Введи нік.'); return; }
+    if(nick.length > 24){ chatNickError('Занадто довгий нік (максимум 24 символи).'); return; }
+    if(containsBannedWords(nick)){ chatNickError('Нік містить заборонені слова.'); return; }
+    const norm = normalizeNick(nick);
+    try{
+        const ref = db.ref('nicknames/' + norm);
+        const snap = await ref.once('value');
+        const ownerId = snap.val();
+        if(ownerId && String(ownerId) !== String(chatIdentity.telegramId)){
+            chatNickError('Цей нік вже зайнятий, спробуй інший.'); return;
+        }
+        await ref.set(chatIdentity.telegramId);
+        await db.ref('users/' + chatIdentity.telegramId + '/nick').set(nick);
+        chatIdentity.name = nick;
+        chatShowBox();
+    }catch(e){
+        console.warn('UA Radar chat: не вдалось зберегти нік', e);
+        chatNickError('Не вдалось зберегти нік. Спробуй ще раз.');
+    }
+}
+
+async function chatApplySession(res){
     chatIdentity = { telegramId: res.telegramId, name: chatDisplayName(res) };
-    chatShowBox();
+    try{
+        const snap = await db.ref('users/' + res.telegramId + '/nick').once('value');
+        const savedNick = snap.val();
+        if(savedNick){ chatIdentity.name = savedNick; chatShowBox(); return; }
+    }catch(e){ /* нема збереженого ніка або мережа — просто пропонуємо обрати */ }
+    chatShowNickSetup();
 }
 async function chatPrepareLogin(){
     const btn = document.getElementById('chat-login-btn');
@@ -3433,7 +3521,7 @@ async function chatEnsureLogin(){
     if(!token){ chatShowLogin(''); chatPrepareLogin(); return; }
     chatShowLogin('');
     try{
-        chatApplySession(await radarJson('/auth/session', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ token }) }));
+        await chatApplySession(await radarJson('/auth/session', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ token }) }));
     }catch(e){
         if(e.status === 401) rlsSet(RK.token, '');
         chatShowLogin('');
@@ -3457,19 +3545,52 @@ function toggleChatPanel(){
 }
 document.getElementById('chat-nav-btn').onclick = toggleChatPanel;
 
+function chatIsAdminViewer(){
+    return !!(chatIdentity && CHAT_ADMIN_IDS.includes(String(chatIdentity.telegramId)));
+}
+
 function sendMsg(){
     const f=document.getElementById('msg-field');
-    if(!f.value.trim() || !chatIdentity) return;
+    const text = f.value.trim();
+    if(!text || !chatIdentity) return;
+    const isAdminSender = chatIsAdminViewer();
+    // Фільтр лайки/образ не чіпає адмінів — вони самі відповідають за те, що
+    // пишуть (у т.ч. коли це по ділу про росіян). Для всіх інших — блок.
+    if(!isAdminSender && containsBannedWords(text)){
+        const eb = document.getElementById('error-box');
+        eb.innerText = 'Повідомлення містить заборонені слова.';
+        eb.style.display = 'block';
+        setTimeout(()=>eb.style.display='none', 3000);
+        return;
+    }
     db.ref('chat').push({
         telegramId: chatIdentity.telegramId,
         nick: chatIdentity.name,
-        text: f.value.trim(),
-        role: CHAT_ADMIN_IDS.includes(String(chatIdentity.telegramId)) ? 'admin' : 'member',
+        text,
+        role: isAdminSender ? 'admin' : 'member',
         time: Date.now(),
     });
     f.value='';
 }
 document.getElementById('msg-field').onkeypress=e=>{ if(e.key==='Enter') sendMsg(); };
+
+function chatDeleteMsg(id){
+    if(!chatIsAdminViewer()) return;
+    if(!confirm('Видалити це повідомлення?')) return;
+    db.ref('chat/'+id).remove();
+}
+function chatPinMsg(id){
+    if(!chatIsAdminViewer()) return;
+    db.ref('chat/'+id).once('value').then(snap => {
+        const m = snap.val();
+        if(m) db.ref('chat_pinned').set({ id, nick:m.nick||'', text:m.text||'' });
+    });
+}
+function chatUnpinMsg(){
+    if(!chatIsAdminViewer()) return;
+    db.ref('chat_pinned').remove();
+}
+
 db.ref('chat').limitToLast(100).on('child_added', s=>{
     const m=s.val(); const k=s.key;
     const isAdmin=(m.role==='admin');
@@ -3479,7 +3600,11 @@ db.ref('chat').limitToLast(100).on('child_added', s=>{
     div.className='msg-block'+(isAdmin?' is-admin':'')+(isMe?' is-me':'');
     div.id=k;
     const safeNick = (m.nick||'').replace(/</g,'&lt;');
-    div.innerHTML=`<div class="msg-nick">${isAdmin?'<span class="admin-badge">АДМІН</span> ':''}${safeNick}</div><div>${(m.text||'').replace(/</g,'&lt;')}</div>`;
+    let tools = '';
+    if(chatIsAdminViewer()){
+        tools = `<span class="msg-admin-tools"><span onclick="chatPinMsg('${k}')" title="Закріпити">📌</span><span onclick="chatDeleteMsg('${k}')" title="Видалити">🗑</span></span>`;
+    }
+    div.innerHTML=`<div class="msg-nick">${isAdmin?'<span class="admin-badge">АДМІН</span> ':''}${safeNick}${tools}</div><div>${(m.text||'').replace(/</g,'&lt;')}</div>`;
     area.appendChild(div);
     area.scrollTop=area.scrollHeight;
     if(!document.getElementById('chat-panel').classList.contains('open')){
@@ -3487,6 +3612,18 @@ db.ref('chat').limitToLast(100).on('child_added', s=>{
     }
 });
 db.ref('chat').on('child_removed', s=>{ const el=document.getElementById(s.key); if(el) el.remove(); });
+
+/* ==== ЗАКРІПЛЕНЕ ПОВІДОМЛЕННЯ (видно всім, редагують тільки адміни) ==== */
+db.ref('chat_pinned').on('value', s=>{
+    const box = document.getElementById('chat-pinned');
+    const p = s.val();
+    if(!p){ box.style.display = 'none'; box.innerHTML = ''; return; }
+    const safeNick = (p.nick||'').replace(/</g,'&lt;');
+    const safeText = (p.text||'').replace(/</g,'&lt;');
+    const unpinBtn = chatIsAdminViewer() ? '<span class="cp-unpin" onclick="chatUnpinMsg()" title="Відкріпити">✕</span>' : '';
+    box.innerHTML = `<div class="cp-label">📌 ЗАКРІПЛЕНО</div><div><b>${safeNick}:</b> ${safeText}</div>${unpinBtn}`;
+    box.style.display = 'block';
+});
 
 /* ==== РАДАР (преміум) ====
    Вкладка «Радар» бере ТУ САМУ карту (#map), що й вкладка «Карта»: кладе її в
