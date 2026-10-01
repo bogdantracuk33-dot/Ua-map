@@ -53,7 +53,7 @@ body::before{ content:''; position:fixed; inset:0; z-index:900; pointer-events:n
 
 /* ===== shared HUD surface: cut corners + hairline border ===== */
 .top-nav, .toolbar button, .time-badge, .status-bar, .viewer-badge, .toast, .btn-ghost,
-#threat-info, .chat-window, .rv-side, .rv-lock-card, .iv-card, .iv-promo, .iv-faq, .iv-note,
+#threat-info, .chat-panel, .rv-side, .rv-lock-card, .iv-card, .iv-promo, .iv-faq, .iv-note,
 .search-wrap input, .search-results, .search-toggle-btn, .rp-btn, .rp-input, .ti-stat, .ti-variant-btn,
 .iv-btns a, .iv-btns button, .iv-chip, #radar-banner, .rp-status, .feed-item, .msg-block{
     --c:12px;
@@ -70,7 +70,7 @@ body::before{ content:''; position:fixed; inset:0; z-index:900; pointer-events:n
 }
 .toolbar button, .btn-ghost, .search-toggle-btn, .rp-btn, .rp-input, .ti-variant-btn, .iv-btns a, .iv-btns button,
 .iv-chip, .search-wrap input, .rp-status, .feed-item, .msg-block, .ti-stat{ --c:8px; }
-.top-nav, #threat-info, .chat-window, .rv-side, .rv-lock-card, .iv-promo{ --c:18px; }
+.top-nav, #threat-info, .chat-panel, .rv-side, .rv-lock-card, .iv-promo{ --c:18px; }
 .iv-card, .iv-faq, .iv-note{ --c:14px; }
 
 /* ===== HEADER ===== */
@@ -215,18 +215,38 @@ body::before{ content:''; position:fixed; inset:0; z-index:900; pointer-events:n
 .panel-opening{ animation:panelIn .38s cubic-bezier(.16,1,.3,1) both; }
 .panel-closing{ animation:panelOut .22s cubic-bezier(.5,0,1,1) both; pointer-events:none; }
 
-/* ===== CHAT ===== */
-.chat-window{ position:fixed; bottom:78px; right:76px; width:330px; max-width:calc(100vw - 110px); height:430px; max-height:calc(100vh - 170px); background-color:rgba(2,10,5,.46); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); display:none; flex-direction:column; padding:16px; z-index:99998; overflow:hidden; transform-origin:bottom right; }
-.chat-header{ font-family:var(--f-display); color:var(--accent); font-size:15px; letter-spacing:.6px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
-.chat-header .chat-close{ cursor:pointer; color:var(--muted); font-size:16px; line-height:1; transition:.2s; }
-.chat-header .chat-close:hover{ color:var(--red); }
+/* ===== CHAT (виїзна панель — та сама механіка, що й СТРІЧКА) ===== */
+.chat-overlay{ position:fixed; inset:0; background:rgba(0,0,0,0); z-index:6500; display:none; pointer-events:none; transition:background .35s ease; }
+.chat-overlay.open{ display:block; background:rgba(0,4,2,.5); pointer-events:auto; }
+.chat-panel{
+    position:fixed; top:0; right:0; height:100vh; width:410px; max-width:88vw;
+    background-color:rgba(2,10,5,.52); backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px);
+    background-image:linear-gradient(135deg, transparent 50%, var(--line) 50%, var(--line) calc(50% + 1px), transparent calc(50% + 1px));
+    background-position:0 0; background-size:28px 28px; background-repeat:no-repeat;
+    clip-path:polygon(28px 0,100% 0,100% 100%,0 100%,0 28px);
+    box-shadow:inset 1px 0 0 var(--line);
+    z-index:6600; display:flex; flex-direction:column; padding:22px 18px;
+    transform:translateX(100%); transition:transform .4s cubic-bezier(.19,1,.22,1);
+}
+.chat-panel.open{ transform:translateX(0); }
+.chat-head{ display:flex; align-items:center; justify-content:space-between; flex-shrink:0; margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid rgba(61,255,46,.18); }
+.chat-head h2{ font-size:17px; letter-spacing:1.5px; color:var(--accent); margin:0; text-shadow:0 0 10px rgba(61,255,46,.45); font-family:var(--f-display); }
+.chat-head .chat-close{ cursor:pointer; color:var(--muted); font-size:20px; line-height:1; transition:.2s; padding:2px 6px; }
+.chat-head .chat-close:hover{ color:var(--red); }
 #error-box{ background:var(--red); color:#fff; padding:7px; border-radius:2px; display:none; text-align:center; font-size:13px; font-weight:600; margin-bottom:8px; flex-shrink:0; }
 #msg-area{ flex:1; min-height:0; overflow-y:auto; margin-bottom:10px; padding-right:6px; display:flex; flex-direction:column; }
 #msg-area::-webkit-scrollbar{ width:5px; }
 #msg-area::-webkit-scrollbar-thumb{ background:var(--accent); border-radius:10px; }
 .msg-block{ padding:8px 12px; margin-bottom:8px; background-color:rgba(61,255,46,.05); font-size:14px; line-height:1.4; position:relative; word-wrap:break-word; box-shadow:inset 3px 0 0 var(--accent); background-image:none; }
 .msg-block.is-admin{ background-color:rgba(255,46,67,.09); box-shadow:inset 3px 0 0 var(--red); }
+.msg-block.is-me{ box-shadow:inset 3px 0 0 #3aa0ff; }
 .msg-nick{ font-size:11px; color:var(--muted); margin-bottom:3px; font-weight:600; }
+.msg-nick .admin-badge{ color:var(--red); font-weight:700; }
+/* логін-екран чату — той самий стиль картки, що й у замку Радара (.rp-*) */
+.chat-login{ display:flex; flex-direction:column; gap:10px; flex:1; justify-content:center; text-align:center; }
+.chat-login ur-logo{ width:64px; height:64px; margin:0 auto 4px; }
+.chat-login h3{ margin:0; font-family:var(--f-display); font-size:16px; color:var(--accent); }
+.chat-login p{ margin:0; font-size:13px; line-height:1.5; color:#cfe8d6; }
 .chat-input-row{ display:flex; gap:6px; flex-shrink:0; }
 .chat-input-row input{ flex:1; min-width:0; background:rgba(61,255,46,.05); border:1px solid var(--border); color:#fff; border-radius:0; padding:10px; font-family:inherit; font-size:14px; }
 .chat-input-row input:focus{ outline:none; border-color:var(--accent); }
@@ -302,11 +322,8 @@ body::before{ content:''; position:fixed; inset:0; z-index:900; pointer-events:n
         top:auto; bottom:66px; left:8px; right:8px; width:auto; max-width:none;
         max-height:56vh;
     }
-    .chat-window{
-        top:auto; bottom:66px; left:8px; right:8px; width:auto; max-width:none;
-        height:min(60vh, 460px);
-    }
-    .feed-panel{ width:100vw; max-width:100vw; padding:16px 12px; padding-top:calc(16px + env(safe-area-inset-top)); }
+
+    .feed-panel, .chat-panel{ width:100vw; max-width:100vw; padding:16px 12px; padding-top:calc(16px + env(safe-area-inset-top)); }
 }
 @media (max-width: 340px){
     .brand ur-logo[variant="wordmark"]{ display:none; }
@@ -478,12 +495,7 @@ body.tab-info #info-overlay{ display:block; }
 
 .sr-only{ position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0,0,0,0); clip-path:inset(50%); white-space:nowrap; border:0; }
 
-/* chat login (elements carry inline styles for layout only) */
-#nick-field{ width:100%; padding:11px 12px; background:rgba(61,255,46,.05); border:1px solid var(--border); color:var(--ink); font-family:inherit; font-size:14px; border-radius:0; }
-#nick-field:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 12px rgba(61,255,46,.15); }
-#nick-field::placeholder{ color:var(--muted); }
-#login-screen button{ font-family:var(--f-display); font-size:14px; letter-spacing:.8px; clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px); border-radius:0 !important; }
-#login-screen button:hover{ background:var(--lime) !important; }
+/* chat login (елементи несуть інлайн-стилі лише для розкладки) */
 #msg-field{ font-family:inherit; }
 /* threat stat values: body face so long words (Північний схід, км/год) stay compact */
 .ti-stat-value{ font-family:var(--f-body); font-weight:700; font-size:14px; line-height:1.2; }
@@ -494,7 +506,7 @@ body.tab-info #info-overlay{ display:block; }
 
 
 /* ---- glass: blur behind every floating surface ---- */
-.top-nav, .toolbar button, .time-badge, .status-bar, .viewer-badge, .toast, .btn-ghost, #threat-info, .chat-window,
+.top-nav, .toolbar button, .time-badge, .status-bar, .viewer-badge, .toast, .btn-ghost, #threat-info, .chat-panel,
 .rv-side, .rv-lock-card, .search-wrap input, .search-results, .search-toggle-btn{
     -webkit-backdrop-filter:blur(14px) saturate(1.25); backdrop-filter:blur(14px) saturate(1.25);
 }
@@ -594,7 +606,7 @@ body.bm-photo .ua-lbl b{ color:#fff !important; text-shadow:0 0 2px #000, 0 0 3p
 body.bm-photo .ua-c b, body.bm-photo .ua-s b{ opacity:.8; }
 
 /* ---- скло: сила розмиття з налаштувань ---- */
-.top-nav, .toolbar button, .time-badge, .status-bar, .viewer-badge, .toast, .btn-ghost, #threat-info, .chat-window,
+.top-nav, .toolbar button, .time-badge, .status-bar, .viewer-badge, .toast, .btn-ghost, #threat-info, .chat-panel,
 .rv-side, .rv-lock-card, .search-wrap input, .search-results, .search-toggle-btn{
     -webkit-backdrop-filter:blur(var(--uas-blur)) saturate(1.25); backdrop-filter:blur(var(--uas-blur)) saturate(1.25);
 }
@@ -1136,12 +1148,17 @@ body.uas-globe-on #uas-globe{ display:block; }
     <div class="ti-desc" id="ti-desc">—</div>
 </div>
 
-<div class="chat-window" id="chat-window">
+<div class="chat-overlay" id="chat-overlay" onclick="closeChatPanel()"></div>
+<div class="chat-panel" id="chat-panel">
+    <div class="chat-head"><h2>ЧАТ ГЛЯДАЧІВ</h2><span class="chat-close" onclick="closeChatPanel()">✕</span></div>
     <div id="error-box"></div>
-    <div class="chat-header">Чат <span class="chat-close" onclick="closeFloatPanel('chat-window')">✕</span></div>
-    <div id="login-screen" style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">
-        <input type="text" id="nick-field" placeholder="Введіть нік...">
-        <button onclick="checkNick()" style="padding:10px; background:var(--accent); border:none; border-radius:8px; cursor:pointer; font-weight:600; color:#042;">УВІЙТИ</button>
+    <div id="chat-login" class="chat-login">
+        <ur-logo variant="mark"></ur-logo>
+        <h3>Увійти в чат</h3>
+        <p>Повідомлення підписані твоїм іменем з Telegram — без придуманих ніків.</p>
+        <a class="rp-btn primary" id="chat-login-btn" target="_blank" rel="noopener" href="#">🔑 Увійти через Telegram-бота</a>
+        <div class="rp-lbl">Без паролів: у боті просто натисни Start, і чат відкриється сам.</div>
+        <div class="rp-status" id="chat-login-msg" style="display:none"></div>
     </div>
     <div id="chat-box" style="display:none; flex-direction:column; flex:1; min-height:0;">
         <div id="msg-area"></div>
@@ -1801,6 +1818,7 @@ const map = L.map('map', { zoomControl:false, attributionControl:true, minZoom:5
     if (G.open) return;
     if (typeof currentTab !== 'undefined' && currentTab !== 'map' && typeof setTab === 'function') setTab('map');
     try { if (typeof closeFeedPanel === 'function') closeFeedPanel(); } catch (e) {}
+    try { if (typeof closeChatPanel === 'function') closeChatPanel(); } catch (e) {}
     G.open = true;
     document.body.classList.add('uas-globe-on');
     var load = $('uas-gload');
@@ -1999,6 +2017,7 @@ const map = L.map('map', { zoomControl:false, attributionControl:true, minZoom:5
   function openPanel() {
     var p = $('uas-panel'); if (!p || p.classList.contains('open')) return;
     try { if (typeof closeFeedPanel === 'function') closeFeedPanel(); } catch (e) {}
+    try { if (typeof closeChatPanel === 'function') closeChatPanel(); } catch (e) {}
     try { if (typeof currentTab !== 'undefined' && currentTab === 'info' && typeof setTab === 'function') setTab('map'); } catch (e) {}
     if (!thumbsLoaded) {
       thumbsLoaded = true;
@@ -3346,46 +3365,124 @@ db.ref('presence/viewers').on('value', s=> document.getElementById('viewer-count
 /* ==== MAINTENANCE MODE ==== */
 db.ref('status/maintenance').on('value', s=> document.getElementById('conn-status').innerText = s.val() ? 'Технічні роботи' : 'Онлайн');
 
-/* ==== CHAT ==== */
-function showError(msg){ const eb=document.getElementById('error-box'); eb.innerText=msg; eb.style.display='block'; setTimeout(()=>eb.style.display='none',3000); }
-function checkNick(){
-    const n=document.getElementById('nick-field').value.trim();
-    if(!n){ showError("Введіть нік!"); return; }
-    if(n.includes(' ')){ showError("Без пробілів!"); return; }
-    localStorage.setItem('my_nick', n);
-    document.getElementById('login-screen').style.display='none';
-    document.getElementById('chat-box').style.display='flex';
+/* ==== CHAT ====
+   Відкривається так само, як СТРІЧКА (overlay + .open на панелі). Вхід — через
+   той самий Telegram-бот і ті самі ендпоінти /auth/start, /auth/poll,
+   /auth/session, що й Радар, і той самий токен у localStorage (RK.token) —
+   тож хто вже залогінений у Радарі, в чаті одразу свій, без повторного входу.
+
+   ВАЖЛИВО: бекенд (/auth/session, /auth/poll) зараз повертає тільки
+   { premium, expiresAt, telegramId } — без імені. Поки це так, у чаті людина
+   підписана як "Гість" + останні 4 цифри її Telegram id (це вже реальна,
+   унікальна й непідробна особа, просто без імені). Якщо бекенд почне
+   повертати ще й ім'я (напр. res.name / res.firstName / res.username),
+   chatApplySession підхопить його сам — більше нічого міняти не треба. */
+let chatIdentity = null; // { telegramId, name }
+let chatNonce = null;
+let chatPollTimer = null;
+// Косметичний бейдж "АДМІН" у чаті — не впливає на права запису, лише на вигляд.
+// Впиши сюди ті самі Telegram id, що й ADMIN_TELEGRAM_IDS на бекенді.
+const CHAT_ADMIN_IDS = [];
+
+function chatShowLogin(msg){
+    document.getElementById('chat-login').style.display = 'flex';
+    document.getElementById('chat-box').style.display = 'none';
+    const m = document.getElementById('chat-login-msg');
+    if(msg !== undefined){ m.innerText = msg; m.style.display = msg ? 'block' : 'none'; }
 }
-if(localStorage.getItem('my_nick')){
-    document.getElementById('login-screen').style.display='none';
-    document.getElementById('chat-box').style.display='flex';
+function chatShowBox(){
+    document.getElementById('chat-login').style.display = 'none';
+    document.getElementById('chat-box').style.display = 'flex';
 }
-document.getElementById('chat-nav-btn').onclick=()=>{
-    const w=document.getElementById('chat-window');
-    const btn=document.getElementById('chat-nav-btn');
-    const opening = w.style.display!=='flex';
-    if(opening){ openFloatPanel('chat-window'); btn.classList.remove('has-alert'); }
-    else{ closeFloatPanel('chat-window'); }
-};
+function chatDisplayName(res){
+    return res.name || res.firstName || res.first_name || res.username
+        || ('Гість' + String(res.telegramId).slice(-4));
+}
+function chatApplySession(res){
+    chatIdentity = { telegramId: res.telegramId, name: chatDisplayName(res) };
+    chatShowBox();
+}
+async function chatPrepareLogin(){
+    const btn = document.getElementById('chat-login-btn');
+    try{
+        const { nonce } = await radarJson('/auth/start', { method:'POST' });
+        chatNonce = nonce; btn.href = 'https://t.me/' + RADAR_CFG.BOT + '?start=login_' + nonce;
+    }catch(e){ chatNonce = null; btn.href = '#'; console.warn('UA Radar chat: /auth/start', e); }
+}
+function chatStopPolling(){ clearInterval(chatPollTimer); chatPollTimer = null; }
+function chatStartPolling(){
+    if(!chatNonce || chatPollTimer) return;
+    chatShowLogin('⏳ Відкрий бота, натисни Start і повернись сюди — чат відкриється сам.');
+    let n = 0;
+    chatPollTimer = setInterval(async () => {
+        if(++n > 300){ chatStopPolling(); return; }
+        try{
+            const r = await radarJson('/auth/poll?nonce=' + chatNonce);
+            if(r.status === 'ok'){ chatStopPolling(); rlsSet(RK.token, r.token); chatApplySession(r); }
+            else if(r.status === 'expired'){ chatStopPolling(); chatShowLogin('Час вийшов. Натисни «Увійти» ще раз.'); chatPrepareLogin(); }
+        }catch(e){ /* мережа блимнула — наступне опитування спробує ще раз */ }
+    }, 2000);
+}
+document.getElementById('chat-login-btn').addEventListener('click', e => {
+    if(!chatNonce){ e.preventDefault(); chatPrepareLogin().then(() => { if(chatNonce) window.open(document.getElementById('chat-login-btn').href, '_blank'); chatStartPolling(); }); return; }
+    chatStartPolling();
+});
+async function chatEnsureLogin(){
+    if(chatIdentity) return; // вже впізнали в цьому завантаженні сторінки
+    const token = rlsGet(RK.token);
+    if(!token){ chatShowLogin(''); chatPrepareLogin(); return; }
+    chatShowLogin('');
+    try{
+        chatApplySession(await radarJson('/auth/session', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ token }) }));
+    }catch(e){
+        if(e.status === 401) rlsSet(RK.token, '');
+        chatShowLogin('');
+        chatPrepareLogin();
+    }
+}
+
+function openChatPanel(){
+    document.getElementById('chat-overlay').classList.add('open');
+    document.getElementById('chat-panel').classList.add('open');
+    document.getElementById('chat-nav-btn').classList.remove('has-alert');
+    chatEnsureLogin();
+}
+function closeChatPanel(){
+    document.getElementById('chat-overlay').classList.remove('open');
+    document.getElementById('chat-panel').classList.remove('open');
+}
+function toggleChatPanel(){
+    const open = document.getElementById('chat-panel').classList.contains('open');
+    if(open) closeChatPanel(); else openChatPanel();
+}
+document.getElementById('chat-nav-btn').onclick = toggleChatPanel;
+
 function sendMsg(){
     const f=document.getElementById('msg-field');
-    if(!f.value.trim()) return;
-    db.ref('chat').push({ nick: localStorage.getItem('my_nick'), text: f.value.trim(), role: 'guest', time: Date.now() });
+    if(!f.value.trim() || !chatIdentity) return;
+    db.ref('chat').push({
+        telegramId: chatIdentity.telegramId,
+        nick: chatIdentity.name,
+        text: f.value.trim(),
+        role: CHAT_ADMIN_IDS.includes(String(chatIdentity.telegramId)) ? 'admin' : 'member',
+        time: Date.now(),
+    });
     f.value='';
 }
 document.getElementById('msg-field').onkeypress=e=>{ if(e.key==='Enter') sendMsg(); };
 db.ref('chat').limitToLast(100).on('child_added', s=>{
     const m=s.val(); const k=s.key;
     const isAdmin=(m.role==='admin');
+    const isMe = chatIdentity && m.telegramId && String(m.telegramId) === String(chatIdentity.telegramId);
     const area=document.getElementById('msg-area');
     const div=document.createElement('div');
-    div.className='msg-block'+(isAdmin?' is-admin':'');
+    div.className='msg-block'+(isAdmin?' is-admin':'')+(isMe?' is-me':'');
     div.id=k;
     const safeNick = (m.nick||'').replace(/</g,'&lt;');
-    div.innerHTML=`<div class="msg-nick">${isAdmin?'<span style="color:var(--red);font-weight:700;">АДМІН</span> ':''}${safeNick}</div><div>${(m.text||'').replace(/</g,'&lt;')}</div>`;
+    div.innerHTML=`<div class="msg-nick">${isAdmin?'<span class="admin-badge">АДМІН</span> ':''}${safeNick}</div><div>${(m.text||'').replace(/</g,'&lt;')}</div>`;
     area.appendChild(div);
     area.scrollTop=area.scrollHeight;
-    if(document.getElementById('chat-window').style.display!=='flex'){
+    if(!document.getElementById('chat-panel').classList.contains('open')){
         document.getElementById('chat-nav-btn').classList.add('has-alert');
     }
 });
@@ -3884,11 +3981,13 @@ function setTab(tab){
     document.querySelectorAll('.nav-item[data-tab="map"], .nav-item[data-tab="radar"], .nav-item[data-tab="info"]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     if(prev === 'radar') radarLeave();
     if(tab === 'radar'){
-        ['threat-info','chat-window'].forEach(id => { const el = $r(id); if(el) el.style.display = 'none'; });
+        $r('threat-info').style.display = 'none';
+        if(typeof closeChatPanel === 'function') closeChatPanel();
         if(typeof closeFeedPanel === 'function') closeFeedPanel();
         radarEnter();
     } else if(tab === 'info'){
         if(typeof closeFeedPanel === 'function') closeFeedPanel();
+        if(typeof closeChatPanel === 'function') closeChatPanel();
         $r('info-view').scrollTop = 0;
     } else if(prev === 'info'){
         setTimeout(() => map.invalidateSize({ animate:false }), 60);
