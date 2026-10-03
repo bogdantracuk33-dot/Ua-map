@@ -237,11 +237,25 @@ body::before{ content:''; position:fixed; inset:0; z-index:900; pointer-events:n
 #msg-area{ flex:1; min-height:0; overflow-y:auto; margin-bottom:10px; padding-right:6px; display:flex; flex-direction:column; }
 #msg-area::-webkit-scrollbar{ width:5px; }
 #msg-area::-webkit-scrollbar-thumb{ background:var(--accent); border-radius:10px; }
-.msg-block{ padding:8px 12px; margin-bottom:8px; background-color:rgba(61,255,46,.05); font-size:14px; line-height:1.4; position:relative; word-wrap:break-word; box-shadow:inset 3px 0 0 var(--accent); background-image:none; }
-.msg-block.is-admin{ background-color:rgba(255,46,67,.09); box-shadow:inset 3px 0 0 var(--red); }
-.msg-block.is-me{ box-shadow:inset 3px 0 0 #3aa0ff; }
-.msg-nick{ font-size:11px; color:var(--muted); margin-bottom:3px; font-weight:600; }
+/* ==== ПОВІДОМЛЕННЯ-ХМАРКИ (як у Telegram) ====
+   Рядок з аватаром-ініціалом + бульбашка; свої — праворуч і іншим кольором,
+   чужі — ліворуч, адмінські — підсвічені червоним. Хвостик — через асиметричний
+   border-radius на тому нижньому куті, що ближче до відправника. */
+.msg-row{ display:flex; align-items:flex-end; gap:8px; margin-bottom:10px; animation:msgPop .28s cubic-bezier(.2,.9,.3,1.3); }
+@keyframes msgPop{ 0%{ opacity:0; transform:translateY(10px) scale(.92); } 100%{ opacity:1; transform:translateY(0) scale(1); } }
+.msg-row.is-me{ flex-direction:row-reverse; }
+.msg-avatar{ width:26px; height:26px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:800; color:#03210a; background:var(--accent); }
+.msg-row.is-admin .msg-avatar{ background:var(--red); color:#fff; }
+.msg-row.is-me .msg-avatar{ background:#3aa0ff; color:#03210a; }
+.msg-block{ max-width:76%; padding:7px 11px 16px; border-radius:15px 15px 15px 4px; background-color:rgba(61,255,46,.07);
+    font-size:14px; line-height:1.4; position:relative; word-wrap:break-word; }
+.msg-row.is-me .msg-block{ border-radius:15px 15px 4px 15px; background-color:rgba(58,160,255,.14); }
+.msg-block.is-admin{ background-color:rgba(255,46,67,.12); }
+.msg-nick{ font-size:11px; color:var(--accent); margin-bottom:2px; font-weight:700; }
+.msg-row.is-me .msg-nick{ color:#7fc4ff; }
 .msg-nick .admin-badge{ color:var(--red); font-weight:700; }
+.msg-time{ position:absolute; right:10px; bottom:3px; font-size:9px; color:var(--muted); opacity:.8; }
 /* логін-екран чату — той самий стиль картки, що й у замку Радара (.rp-*) */
 .chat-login{ display:flex; flex-direction:column; gap:10px; flex:1; justify-content:center; text-align:center; }
 .chat-login ur-logo{ width:64px; height:64px; margin:0 auto 4px; }
@@ -3393,38 +3407,20 @@ db.ref('status/maintenance').on('value', s=> document.getElementById('conn-statu
    /auth/session, що й Радар, і той самий токен у localStorage (RK.token) —
    тож хто вже залогінений у Радарі, в чаті одразу свій, без повторного входу.
 
-   ВАЖЛИВО: бекенд (/auth/session, /auth/poll) зараз повертає тільки
-   { premium, expiresAt, telegramId } — без імені. Поки це так, у чаті людина
-   підписана як "Гість" + останні 4 цифри її Telegram id (це вже реальна,
-   унікальна й непідробна особа, просто без імені). Якщо бекенд почне
-   повертати ще й ім'я (напр. res.name / res.firstName / res.username),
-   chatApplySession підхопить його сам — більше нічого міняти не треба. */
+   НАДСИЛАННЯ/ВИДАЛЕННЯ/ЗАКРІПЛЕННЯ йдуть через бекенд (/chat/send,
+   /chat/delete, /chat/pin, /chat/unpin) токеном — сервер сам перевіряє, хто
+   адмін (ADMIN_TELEGRAM_IDS), і сам проганяє текст через AI-модерацію образ.
+   Раніше це писалось напряму у Firebase з браузера — перевірка "хто адмін"
+   була тільки косметичною (ховала кнопки в інтерфейсі), і підкований
+   зловмисник міг видалити чуже повідомлення з консолі. Тепер справжня
+   перевірка — на сервері; читання чату (child_added) і далі йде напряму з
+   Firebase, бо читати можна всім, це не проблема. */
 let chatIdentity = null; // { telegramId, name }
 let chatNonce = null;
 let chatPollTimer = null;
-// Ці самі Telegram id видають платний доступ до Радару (команди /grant, /revoke
-// в боті) — тепер вони ж дають права модератора в чаті: видно 🗑/📌 на будь-якому
-// повідомленні, і свої повідомлення підписані бейджем "АДМІН".
-// ПОМІТКА ПРО МЕЖІ ЦЬОГО ЗАХИСТУ: чат пише в Firebase напряму з браузера, без
-// Firebase Authentication, тому правила Realtime Database не можуть перевірити
-// "хто це" — вони або відкриті для запису всім, або закриті всім. Перевірка
-// "чи адмін" тут — тільки в інтерфейсі (ховає/показує кнопки). Технічно
-// підкований зловмисник міг би видалити чуже повідомлення напряму через консоль
-// браузера. Для публічного фан-чату це прийнятний компроміс; якщо колись
-// знадобиться справжній захист — це переробляється через Cloud Functions +
-// Firebase Auth (окрема, більша робота).
+// Косметика для інтерфейсу (які кнопки показати) — РЕАЛЬНА перевірка прав
+// адміна тепер на сервері (premium-service.js, той самий список ADMIN_TELEGRAM_IDS).
 const CHAT_ADMIN_IDS = ['6888669432', '5098847708'];
-
-/* ==== ФІЛЬТР ЛАЙКИ/ОБРАЗ ====
-   Простий фільтр за списком коренів слів — він не розуміє КОНТЕКСТ (на кого
-   спрямована лайка), тому технічно не може відрізнити "образу іншого глядача"
-   від "лайки на росіян" — обидва варіанти містять ті самі слова. Тому фільтр
-   ріже і те, і те; антиросійська лайка проходить тільки якщо її пише АДМІН
-   (адмінів фільтр не чіпає) — в іншому разі блокувати вибірково може тільки
-   людина: саме для цього й зроблено 🗑 для адмінів (пункт нижче).
-   Список короткий і легко розширюється — просто дописуй корені через |. */
-const BANNED_WORD_PATTERN = /хуй|хуе|хуї|хую|пизд|піздец|єбат|ебат|їбат|заєб|заєб|бляд|блять|мудак|мудил|довбойоб|даун|підор|підар|пидор|сволот|тварин[аи] конченн|виродок|гандон|курва|сучар|сука|сучк/i;
-function containsBannedWords(text){ return BANNED_WORD_PATTERN.test(text || ''); }
 
 function chatShowLogin(msg){
     document.getElementById('chat-login').style.display = 'flex';
@@ -3455,29 +3451,23 @@ function chatDisplayName(res){
     return res.name || res.firstName || res.first_name || res.username
         || ('Гість' + String(res.telegramId).slice(-4));
 }
-const normalizeNick = n => n.trim().toLowerCase();
-
+const NICK_ERRORS = {
+    empty: 'Введи нік.', too_long: 'Занадто довгий нік (максимум 24 символи).',
+    banned_words: 'Нік містить заборонені слова.', taken: 'Цей нік вже зайнятий, спробуй інший.',
+    invalid_token: 'Сесія застаріла, увійди ще раз.',
+};
 async function chatSubmitNickname(){
-    const raw = document.getElementById('chat-nick-field').value;
-    const nick = raw.trim();
+    const nick = document.getElementById('chat-nick-field').value.trim();
     if(!nick){ chatNickError('Введи нік.'); return; }
-    if(nick.length > 24){ chatNickError('Занадто довгий нік (максимум 24 символи).'); return; }
-    if(containsBannedWords(nick)){ chatNickError('Нік містить заборонені слова.'); return; }
-    const norm = normalizeNick(nick);
     try{
-        const ref = db.ref('nicknames/' + norm);
-        const snap = await ref.once('value');
-        const ownerId = snap.val();
-        if(ownerId && String(ownerId) !== String(chatIdentity.telegramId)){
-            chatNickError('Цей нік вже зайнятий, спробуй інший.'); return;
-        }
-        await ref.set(chatIdentity.telegramId);
-        await db.ref('users/' + chatIdentity.telegramId + '/nick').set(nick);
-        chatIdentity.name = nick;
+        const res = await radarJson('/chat/nickname', {
+            method:'POST', headers:{ 'Content-Type':'application/json' },
+            body: JSON.stringify({ token: rlsGet(RK.token), nick }),
+        });
+        chatIdentity.name = res.nick;
         chatShowBox();
     }catch(e){
-        console.warn('UA Radar chat: не вдалось зберегти нік', e);
-        chatNickError('Не вдалось зберегти нік. Спробуй ще раз.');
+        chatNickError(NICK_ERRORS[e.code] || 'Не вдалось зберегти нік. Спробуй ще раз.');
     }
 }
 
@@ -3548,64 +3538,82 @@ document.getElementById('chat-nav-btn').onclick = toggleChatPanel;
 function chatIsAdminViewer(){
     return !!(chatIdentity && CHAT_ADMIN_IDS.includes(String(chatIdentity.telegramId)));
 }
+function chatError(text){
+    const eb = document.getElementById('error-box');
+    eb.innerText = text; eb.style.display = 'block';
+    setTimeout(()=>eb.style.display='none', 3000);
+}
+const SEND_ERRORS = {
+    blocked: 'Повідомлення не пройшло перевірку (образа/лайка на учасників чату).',
+    rate_limited: 'Занадто часто — зачекай секунду.',
+    too_long: 'Повідомлення занадто довге (макс. 500 символів).',
+    invalid_token: 'Сесія застаріла, увійди ще раз.',
+};
 
-function sendMsg(){
+async function sendMsg(){
     const f=document.getElementById('msg-field');
     const text = f.value.trim();
     if(!text || !chatIdentity) return;
-    const isAdminSender = chatIsAdminViewer();
-    // Фільтр лайки/образ не чіпає адмінів — вони самі відповідають за те, що
-    // пишуть (у т.ч. коли це по ділу про росіян). Для всіх інших — блок.
-    if(!isAdminSender && containsBannedWords(text)){
-        const eb = document.getElementById('error-box');
-        eb.innerText = 'Повідомлення містить заборонені слова.';
-        eb.style.display = 'block';
-        setTimeout(()=>eb.style.display='none', 3000);
-        return;
+    f.disabled = true;
+    try{
+        await radarJson('/chat/send', {
+            method:'POST', headers:{ 'Content-Type':'application/json' },
+            body: JSON.stringify({ token: rlsGet(RK.token), text }),
+        });
+        f.value='';
+    }catch(e){
+        chatError(SEND_ERRORS[e.code] || 'Не вдалось надіслати. Спробуй ще раз.');
+    }finally{
+        f.disabled = false; f.focus();
     }
-    db.ref('chat').push({
-        telegramId: chatIdentity.telegramId,
-        nick: chatIdentity.name,
-        text,
-        role: isAdminSender ? 'admin' : 'member',
-        time: Date.now(),
-    });
-    f.value='';
 }
 document.getElementById('msg-field').onkeypress=e=>{ if(e.key==='Enter') sendMsg(); };
 
-function chatDeleteMsg(id){
-    if(!chatIsAdminViewer()) return;
-    if(!confirm('Видалити це повідомлення?')) return;
-    db.ref('chat/'+id).remove();
+async function chatDeleteMsg(id){
+    if(!chatIsAdminViewer() || !confirm('Видалити це повідомлення?')) return;
+    try{ await radarJson('/chat/delete', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ token: rlsGet(RK.token), id }) }); }
+    catch(e){ chatError('Не вдалось видалити.'); }
 }
-function chatPinMsg(id){
+async function chatPinMsg(id){
     if(!chatIsAdminViewer()) return;
-    db.ref('chat/'+id).once('value').then(snap => {
-        const m = snap.val();
-        if(m) db.ref('chat_pinned').set({ id, nick:m.nick||'', text:m.text||'' });
-    });
+    try{ await radarJson('/chat/pin', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ token: rlsGet(RK.token), id }) }); }
+    catch(e){ chatError('Не вдалось закріпити.'); }
 }
-function chatUnpinMsg(){
+async function chatUnpinMsg(){
     if(!chatIsAdminViewer()) return;
-    db.ref('chat_pinned').remove();
+    try{ await radarJson('/chat/unpin', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ token: rlsGet(RK.token) }) }); }
+    catch(e){ chatError('Не вдалось відкріпити.'); }
 }
 
+/* Читання чату — і далі напряму з Firebase (нешкідливо, туди нічого не пишеться
+   звідси). Повідомлення-"хмарка": рядок з аватаром-ініціалом + бульбашка,
+   свої — праворуч, адмінські — підсвічені, час — у кутку бульбашки. */
 db.ref('chat').limitToLast(100).on('child_added', s=>{
     const m=s.val(); const k=s.key;
     const isAdmin=(m.role==='admin');
     const isMe = chatIdentity && m.telegramId && String(m.telegramId) === String(chatIdentity.telegramId);
     const area=document.getElementById('msg-area');
-    const div=document.createElement('div');
-    div.className='msg-block'+(isAdmin?' is-admin':'')+(isMe?' is-me':'');
-    div.id=k;
-    const safeNick = (m.nick||'').replace(/</g,'&lt;');
+    const nick = (m.nick||'Гість');
+    const safeNick = nick.replace(/</g,'&lt;');
+    const initial = nick.trim().charAt(0).toUpperCase() || '?';
+    const timeStr = m.time ? new Date(m.time).toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit'}) : '';
+
+    const row=document.createElement('div');
+    row.className='msg-row'+(isAdmin?' is-admin':'')+(isMe?' is-me':'');
+    row.id=k;
+
     let tools = '';
     if(chatIsAdminViewer()){
         tools = `<span class="msg-admin-tools"><span onclick="chatPinMsg('${k}')" title="Закріпити">📌</span><span onclick="chatDeleteMsg('${k}')" title="Видалити">🗑</span></span>`;
     }
-    div.innerHTML=`<div class="msg-nick">${isAdmin?'<span class="admin-badge">АДМІН</span> ':''}${safeNick}${tools}</div><div>${(m.text||'').replace(/</g,'&lt;')}</div>`;
-    area.appendChild(div);
+    row.innerHTML =
+        `<div class="msg-avatar">${initial}</div>`+
+        `<div class="msg-block${isAdmin?' is-admin':''}">`+
+            `<div class="msg-nick">${isAdmin?'<span class="admin-badge">АДМІН</span> ':''}${safeNick}${tools}</div>`+
+            `<div class="msg-text">${(m.text||'').replace(/</g,'&lt;')}</div>`+
+            `<div class="msg-time">${timeStr}</div>`+
+        `</div>`;
+    area.appendChild(row);
     area.scrollTop=area.scrollHeight;
     if(!document.getElementById('chat-panel').classList.contains('open')){
         document.getElementById('chat-nav-btn').classList.add('has-alert');
