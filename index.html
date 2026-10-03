@@ -249,7 +249,7 @@ body::before{ content:''; position:fixed; inset:0; z-index:900; pointer-events:n
 .msg-row.is-admin .msg-avatar{ background:var(--red); color:#fff; }
 .msg-row.is-me .msg-avatar{ background:#3aa0ff; color:#03210a; }
 .msg-block{ max-width:76%; padding:7px 11px 16px; border-radius:15px 15px 15px 4px; background-color:rgba(61,255,46,.07);
-    font-size:14px; line-height:1.4; position:relative; word-wrap:break-word; }
+    font-size:14px; line-height:1.4; position:relative; word-wrap:break-word; overflow-wrap:anywhere; min-width:0; }
 .msg-row.is-me .msg-block{ border-radius:15px 15px 4px 15px; background-color:rgba(58,160,255,.14); }
 .msg-block.is-admin{ background-color:rgba(255,46,67,.12); }
 .msg-nick{ font-size:11px; color:var(--accent); margin-bottom:2px; font-weight:700; }
@@ -268,11 +268,17 @@ body::before{ content:''; position:fixed; inset:0; z-index:900; pointer-events:n
 .chat-footnote{ margin-top:8px; font-size:11px; color:var(--muted); text-align:center; flex-shrink:0; }
 .chat-footnote a{ color:var(--accent); cursor:pointer; }
 .chat-footnote a:hover{ text-decoration:underline; }
-#chat-pinned{ flex-shrink:0; margin-bottom:8px; padding:8px 10px; background:rgba(255,176,32,.1); border-left:3px solid #ffb020; font-size:13px; line-height:1.4; position:relative; }
+#chat-pinned{ flex-shrink:0; margin-bottom:8px; padding:8px 28px 8px 10px; background:rgba(255,176,32,.1); border-left:3px solid #ffb020; font-size:13px; line-height:1.4; position:relative;
+    box-sizing:border-box; width:100%; max-width:100%; min-width:0; overflow:hidden; cursor:pointer; }
+#chat-pinned .cp-txt{ display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap; }
+#chat-pinned.open .cp-txt{ display:block; max-height:35vh; overflow-y:auto; }
+#chat-pinned .cp-more{ display:none; font-size:10px; color:var(--muted); margin-top:3px; }
+#chat-pinned.long .cp-more{ display:block; }
 #chat-pinned .cp-label{ font-size:10px; letter-spacing:.5px; color:#ffb020; font-weight:700; margin-bottom:3px; }
 #chat-pinned .cp-unpin{ position:absolute; top:6px; right:8px; cursor:pointer; color:var(--muted); font-size:13px; }
 #chat-pinned .cp-unpin:hover{ color:var(--red); }
-.msg-admin-tools{ display:inline-flex; gap:8px; margin-left:8px; opacity:.55; }
+.msg-admin-tools{ display:none; gap:8px; margin-left:8px; opacity:.55; }
+#chat-panel.chat-admin .msg-admin-tools{ display:inline-flex; }
 .msg-admin-tools span{ cursor:pointer; }
 .msg-admin-tools span:hover{ opacity:1; }
 
@@ -3473,6 +3479,7 @@ async function chatSubmitNickname(){
 
 async function chatApplySession(res){
     chatIdentity = { telegramId: res.telegramId, name: chatDisplayName(res) };
+    chatServerAdmin = null; chatUpdateAdminUi(); chatRefreshAdmin();
     try{
         const snap = await db.ref('users/' + res.telegramId + '/nick').once('value');
         const savedNick = snap.val();
@@ -3535,8 +3542,25 @@ function toggleChatPanel(){
 }
 document.getElementById('chat-nav-btn').onclick = toggleChatPanel;
 
+// Відповідь сервера (/chat/whoami) головніша за локальний список CHAT_ADMIN_IDS:
+// той самий ADMIN_TELEGRAM_IDS, що дозволяє /grant у боті, дає права адміна й тут.
+let chatServerAdmin = null;
 function chatIsAdminViewer(){
-    return !!(chatIdentity && CHAT_ADMIN_IDS.includes(String(chatIdentity.telegramId)));
+    if(!chatIdentity) return false;
+    if(chatServerAdmin !== null) return chatServerAdmin;
+    return CHAT_ADMIN_IDS.includes(String(chatIdentity.telegramId));
+}
+function chatUpdateAdminUi(){
+    const panel = document.getElementById('chat-panel');
+    if(panel) panel.classList.toggle('chat-admin', chatIsAdminViewer());
+    chatRenderPinned();
+}
+async function chatRefreshAdmin(){
+    try{
+        const j = await radarJson('/chat/whoami', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ token: rlsGet(RK.token) }) });
+        chatServerAdmin = !!j.admin;
+    }catch(e){ chatServerAdmin = null; }
+    chatUpdateAdminUi();
 }
 function chatError(text){
     const eb = document.getElementById('error-box');
@@ -3602,10 +3626,8 @@ db.ref('chat').limitToLast(100).on('child_added', s=>{
     row.className='msg-row'+(isAdmin?' is-admin':'')+(isMe?' is-me':'');
     row.id=k;
 
-    let tools = '';
-    if(chatIsAdminViewer()){
-        tools = `<span class="msg-admin-tools"><span onclick="chatPinMsg('${k}')" title="Закріпити">📌</span><span onclick="chatDeleteMsg('${k}')" title="Видалити">🗑</span></span>`;
-    }
+    // Кнопки є в КОЖНОМУ повідомленні (і в старих, що прийшли до входу); видно їх лише адміну (CSS .chat-admin).
+    const tools = `<span class="msg-admin-tools"><span onclick="chatPinMsg('${k}')" title="Закріпити">📌</span><span onclick="chatDeleteMsg('${k}')" title="Видалити">🗑</span></span>`;
     row.innerHTML =
         `<div class="msg-avatar">${initial}</div>`+
         `<div class="msg-block${isAdmin?' is-admin':''}">`+
@@ -3622,16 +3644,21 @@ db.ref('chat').limitToLast(100).on('child_added', s=>{
 db.ref('chat').on('child_removed', s=>{ const el=document.getElementById(s.key); if(el) el.remove(); });
 
 /* ==== ЗАКРІПЛЕНЕ ПОВІДОМЛЕННЯ (видно всім, редагують тільки адміни) ==== */
-db.ref('chat_pinned').on('value', s=>{
+let chatPinnedVal = null;
+function chatRenderPinned(){
     const box = document.getElementById('chat-pinned');
-    const p = s.val();
-    if(!p){ box.style.display = 'none'; box.innerHTML = ''; return; }
-    const safeNick = (p.nick||'').replace(/</g,'&lt;');
-    const safeText = (p.text||'').replace(/</g,'&lt;');
-    const unpinBtn = chatIsAdminViewer() ? '<span class="cp-unpin" onclick="chatUnpinMsg()" title="Відкріпити">✕</span>' : '';
-    box.innerHTML = `<div class="cp-label">📌 ЗАКРІПЛЕНО</div><div><b>${safeNick}:</b> ${safeText}</div>${unpinBtn}`;
+    if(!box) return;
+    const p = chatPinnedVal;
+    if(!p){ box.style.display = 'none'; box.innerHTML = ''; box.classList.remove('open','long'); return; }
+    const esc = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const unpinBtn = chatIsAdminViewer() ? '<span class="cp-unpin" onclick="event.stopPropagation();chatUnpinMsg()" title="Відкріпити">✕</span>' : '';
+    const isLong = ((p.nick||'').length + (p.text||'').length) > 110;
+    box.classList.toggle('long', isLong);
+    box.innerHTML = `<div class="cp-label">📌 ЗАКРІПЛЕНО</div><div class="cp-txt"><b>${esc(p.nick)}:</b> ${esc(p.text)}</div><div class="cp-more">${box.classList.contains('open') ? 'натисни, щоб згорнути' : 'натисни, щоб розгорнути'}</div>${unpinBtn}`;
     box.style.display = 'block';
-});
+}
+document.getElementById('chat-pinned').addEventListener('click', function(){ if(this.classList.contains('long')){ this.classList.toggle('open'); chatRenderPinned(); } });
+db.ref('chat_pinned').on('value', s=>{ chatPinnedVal = s.val(); chatRenderPinned(); });
 
 /* ==== РАДАР (преміум) ====
    Вкладка «Радар» бере ТУ САМУ карту (#map), що й вкладка «Карта»: кладе її в
