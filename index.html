@@ -307,6 +307,9 @@ body::before{ content:''; position:fixed; inset:0; z-index:900; pointer-events:n
 .chat-input-row button{ transition:transform .15s, filter .2s; }
 .chat-input-row button:hover{ filter:brightness(1.15); }
 .chat-input-row button:active{ transform:scale(.9); }
+.msg-warn{ margin:6px auto 12px; max-width:90%; padding:10px 14px; background:rgba(255,176,32,.12); border:1px solid rgba(255,176,32,.45); border-radius:12px; font-size:14px; line-height:1.4; display:flex; flex-direction:column; gap:3px; animation:msgInL .4s cubic-bezier(.2,.9,.25,1.25) both; transition:opacity .5s; }
+.msg-warn b{ color:#ffb020; } .msg-warn i{ font-size:11px; color:var(--muted); }
+.msg-warn.out{ opacity:0; }
 @media (prefers-reduced-motion:reduce){ .msg-row, #chat-pinned{ animation:none !important; } .msg-block, .msg-avatar{ transition:none; } }
 
 
@@ -3602,6 +3605,16 @@ const SEND_ERRORS = {
     invalid_token: 'Сесія застаріла, увійди ще раз.',
 };
 
+// Попередження бачить лише автор: це локальний блок у його чаті, у Firebase нічого не пишеться.
+function chatLocalWarning(reason){
+    const area = document.getElementById('msg-area');
+    const el = document.createElement('div');
+    el.className = 'msg-warn';
+    const safe = String(reason || 'Повідомлення містить образу.').replace(/</g,'&lt;');
+    el.innerHTML = '<b>⚠️ Повідомлення не надіслано</b><span>' + safe + '</span><i>Це бачиш тільки ти. Правила: без образ людей у чаті.</i>';
+    area.appendChild(el); area.scrollTop = area.scrollHeight;
+    setTimeout(()=>{ el.classList.add('out'); setTimeout(()=>el.remove(), 500); }, 12000);
+}
 async function sendMsg(){
     const f=document.getElementById('msg-field');
     const text = f.value.trim();
@@ -3614,7 +3627,8 @@ async function sendMsg(){
         });
         f.value='';
     }catch(e){
-        chatError(SEND_ERRORS[e.code] || 'Не вдалось надіслати. Спробуй ще раз.');
+        if(e.code === 'blocked') chatLocalWarning(e.reason);
+        else chatError(SEND_ERRORS[e.code] || 'Не вдалось надіслати. Спробуй ще раз.');
     }finally{
         f.disabled = false; f.focus();
     }
@@ -4087,7 +4101,7 @@ const radarApi = p => RADAR_CFG.API.replace(/\/$/,'') + p;
 async function radarJson(path, opts){
     const r = await fetch(radarApi(path), opts);
     let j = {}; try{ j = await r.json(); }catch(e){}
-    if(!r.ok){ const err = new Error('http ' + r.status); err.status = r.status; err.code = j.error; throw err; }
+    if(!r.ok){ const err = new Error('http ' + r.status); err.status = r.status; err.code = j.error; err.reason = j.reason; throw err; }
     return j;
 }
 function radarApplyState(res){
