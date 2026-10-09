@@ -286,20 +286,45 @@
   }
   function thinGeom(g) {
     if (!g) return g;
-    if (g.type === 'Polygon') return { type: 'Polygon', coordinates: g.coordinates.map(function (r) { return thin(r, 220); }) };
-    if (g.type === 'MultiPolygon') return { type: 'MultiPolygon', coordinates: g.coordinates.map(function (p) { return p.map(function (r) { return thin(r, 220); }); }) };
+    if (g.type === 'Polygon') return { type: 'Polygon', coordinates: g.coordinates.map(function (r) { return thin(r, 480); }) };
+    if (g.type === 'MultiPolygon') return { type: 'MultiPolygon', coordinates: g.coordinates.map(function (p) { return p.map(function (r) { return thin(r, 480); }); }) };
     return g;
   }
-  function oblastPaths() {
-    if (G.oblastPaths) return G.oblastPaths;
-    var out = [];
-    var fc = window.UA_RADAR_OBLASTS;
-    if (fc && fc.features) fc.features.forEach(function (f) {
-      var g = f.geometry; if (!g) return;
-      var polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
-      polys.forEach(function (p) { p.forEach(function (ring) { out.push(thin(ring, 260).map(function (c) { return [c[1], c[0]]; })); }); });
+  /* Межі областей на глобусі рахуємо З ТИХ САМИХ (уже прорідже-них) контурів районів,
+     що йдуть у заливку — а не з окремого, незалежно спрощеного набору меж (так було
+     раніше: дві різні за точністю трасування однієї коастлінії лягали один на одного
+     й виглядали як зайва ламана лінія поверх району). Ребро, що в межах однієї області
+     зустрічається лише один раз, лежить на її зовнішньому контурі; ребро, що
+     зустрічається двічі, — внутрішня межа між двома районами тієї ж області й не
+     малюється. Тому лінія області завжди день-у-день збігається з контуром районів. */
+  function computeGlobeOblastPaths(list) {
+    var groups = {};
+    list.forEach(function (p) {
+      var k = p.oblast || '__all__';
+      (groups[k] || (groups[k] = [])).push(p.geometry);
     });
-    return (G.oblastPaths = out);
+    var segs = [];
+    Object.keys(groups).forEach(function (k) {
+      var count = {}, coordsByKey = {};
+      groups[k].forEach(function (geom) {
+        if (!geom) return;
+        var polys = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates];
+        polys.forEach(function (poly) {
+          poly.forEach(function (ring) {
+            for (var i = 0; i < ring.length - 1; i++) {
+              var a = ring[i], b = ring[i + 1];
+              if (a[0] === b[0] && a[1] === b[1]) continue;
+              var ka = a[0].toFixed(9) + ',' + a[1].toFixed(9), kb = b[0].toFixed(9) + ',' + b[1].toFixed(9);
+              var key = ka < kb ? ka + '|' + kb : kb + '|' + ka;
+              count[key] = (count[key] || 0) + 1;
+              if (!coordsByKey[key]) coordsByKey[key] = [[a[1], a[0]], [b[1], b[0]]];
+            }
+          });
+        });
+      });
+      Object.keys(count).forEach(function (key) { if (count[key] === 1) segs.push(coordsByKey[key]); });
+    });
+    return segs;
   }
 
   /* --- елемент-обгортка нульового розміру: вміст центрується навколо точки --- */
@@ -403,19 +428,20 @@
       var st = raionStyle(f), alert = st.fillColor !== '#122417';
       var key = f.properties.fid;
       var g = G.thin[key] || (G.thin[key] = thinGeom(f.geometry));
-      list.push({ geometry: g, name: f.properties.rayon, st: st, alert: alert });
+      list.push({ geometry: g, name: f.properties.rayon, st: st, alert: alert, oblast: (f.properties && f.properties.oblast) || '__all__' });
       sig.push(alert ? key + st.fillColor : '');
     });
     var s2 = list.length + '|' + sig.join('') + '|' + S.calmFill + '|' + S.alertFill + '|' + S.alertLine + '|' + S.raionLines + '|' + S.red.h + S.red.l + S.yellow.h + S.yellow.l;
     if (!force && s2 === G.sig) return;
     G.sig = s2;
     G.inst.polygonsData(list);
+    G.oblastPaths = computeGlobeOblastPaths(list);
+    G.inst.pathsData(S.oblasts ? G.oblastPaths : []);
   }
   function pushGlobe(force) {
     if (!G.inst) return;
     pushPolys(force);
     pushHtml();
-    G.inst.pathsData(S.oblasts ? oblastPaths() : []);
     if (force) scheduleLabels(0);
   }
 
@@ -443,11 +469,13 @@
       .polygonStrokeColor(function (p) { return (p.alert || S.raionLines) ? p.st.color : null; })
       .polygonSideColor(function () { return 'rgba(0,0,0,0)'; })
       .polygonAltitude(function (p) { return p.alert ? 0.0042 : 0.003; })
+      .polygonCapCurvatureResolution(0.5)        /* дрібний крок — межі районів щільно прилягають до сфери, а не «спливають» при повороті */
       .polygonsTransitionDuration(0)
       .polygonLabel(function (p) { return '<div class="uas-tip">' + esc(p.name) + '</div>'; })
       .onPolygonClick(function (p) { try { showRaionInfo(p.name); } catch (e) {} })
       /* підписи, цілі, пускові майданчики */
       .htmlLat('lat').htmlLng('lng').htmlAltitude(0.006).htmlElement(function (d) { return d.el; })
+      .htmlTransitionDuration(0)                  /* підписи й мітки стрибають миттєво на місце, як на карті, без «плавання» */
       .onZoom(function () { scheduleLabels(); });
     try { var m = g.globeMaterial(); if (m && m.color) m.color.set('#06120a'); } catch (e) {}
     var c = g.controls(); c.autoRotate = S.globeRotate; c.autoRotateSpeed = 0.35; c.minDistance = 100.6; c.maxDistance = 520; c.enableDamping = true;
@@ -770,9 +798,18 @@
     /* глобус: кнопки */
     window.addEventListener('resize', resizeGlobe);
 
+    /* на вкладці «Радар» карта вимкнена, тож «Опції» й «Стрічка» там недоступні */
+    function onRadarTab() { return typeof currentTab !== 'undefined' && currentTab === 'radar'; }
+    function blockedOnRadar(e) {
+      if (!onRadarTab()) return false;
+      e.stopImmediatePropagation(); e.preventDefault();
+      toast('Перейдіть на карту, щоб відкрити цю функцію');
+      return true;
+    }
+
     /* меню: кнопка «ОПЦІЇ»; інші розділи закривають глобус */
     var nav = document.querySelector('.nav-item[data-tab="settings"]');
-    if (nav) nav.addEventListener('click', function (e) { e.stopImmediatePropagation(); togglePanel(); }, true);
+    if (nav) nav.addEventListener('click', function (e) { if (blockedOnRadar(e)) return; e.stopImmediatePropagation(); togglePanel(); }, true);
     Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function (n) {
       if (n.dataset.tab === 'settings' || n.id === 'chat-nav-btn') return;
       n.addEventListener('click', function () { if (n.id === 'radar-nav-btn') exitGlobe(); closePanel(); }, true);
@@ -781,8 +818,9 @@
       if (e.key !== 'Escape') return;
       var pn = $('uas-panel'); if (pn && pn.classList.contains('open')) closePanel(); else if (G.open) exitGlobe();
     });
-    /* «Стрічка» відкривається окремою кнопкою: закриваємо налаштування */
-    var fb = $('feed-nav-btn'); if (fb) fb.addEventListener('click', function () { closePanel(); }, true);
+    /* «Стрічка» відкривається окремою кнопкою: на «Радарі» — заблоковано, інакше закриваємо опції */
+    var fb = $('feed-nav-btn');
+    if (fb) fb.addEventListener('click', function (e) { if (blockedOnRadar(e)) return; closePanel(); }, true);
 
     /* пам'ятати позицію */
     map.on('moveend', function () {
@@ -842,5 +880,9 @@
 
   /* корисне для дебагу та інших скриптів */
   UAS.open = openPanel; UAS.close = closePanel; UAS.openGlobe = function () { setKey('globe', true); syncUI(); }; UAS.closeGlobe = exitGlobe;
+  /* основний скрипт кличе це одразу після того, як перемалював геометрію районів
+     (наприклад, після завантаження точніших меж з мережі) — без цього глобус ще
+     довго показує старі, закешовані прорідже-ні контури поряд із новою картою. */
+  UAS.onRaionsUpdated = function () { G.thin = {}; if (G.inst) pushGlobe(true); };
   UAS.setBase = function (id) { setKey('basemap', id); syncUI(); };
 })();
