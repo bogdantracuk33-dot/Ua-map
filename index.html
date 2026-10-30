@@ -4610,5 +4610,178 @@ body .pl-panel.iv-card{ flex-direction:column; }
     .iv-grid{ grid-template-columns:1fr; }
 }
 </style>
+<style id="ua-ios-css">
+/* ==========================================================================
+   UA RADAR — iOS «Liquid Glass» + motion
+   Шар поверх «Bento Dock»: матеріали, шрифти, пружинна анімація, розмиття.
+   ========================================================================== */
+:root{
+    --f-display:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Inter','Segoe UI',system-ui,Roboto,sans-serif;
+    --f-body:-apple-system,BlinkMacSystemFont,'SF Pro Text','Inter','Segoe UI',system-ui,Roboto,sans-serif;
+    --spring:cubic-bezier(.32,.72,0,1);          /* iOS sheet curve */
+    --bounce:cubic-bezier(.34,1.56,.64,1);       /* легкий перелом */
+    --glass:rgba(34,40,37,.46);
+    --glass-strong:rgba(26,31,29,.62);
+    --hair:rgba(255,255,255,.16);
+    --blue:#0a84ff; --ios-red:#ff453a; --ios-green:#30d158;
+    --glass-shadow:inset 0 1px 0 rgba(255,255,255,.28), inset 0 0 0 .5px var(--hair), inset 0 -1px 0 rgba(0,0,0,.25), 0 16px 44px rgba(0,0,0,.42);
+}
+html body{ font-family:var(--f-body); letter-spacing:-.01em; }
+
+/* ---------- РІДКЕ СКЛО ---------- */
+html body .toolbar, html body .time-badge, html body .status-bar, html body .viewer-badge, html body .toast, html body .btn-ghost,
+html body .brand, html body .search-wrap input, html body .search-results, html body .search-toggle-btn, html body #radar-banner,
+html body #uas-coords, html body .uas-toast, html body .top-nav{
+    background-color:var(--glass);
+    background-image:linear-gradient(180deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.04) 42%, rgba(255,255,255,.02) 100%);
+    -webkit-backdrop-filter:blur(34px) saturate(190%) brightness(1.05); backdrop-filter:blur(34px) saturate(190%) brightness(1.05);
+    box-shadow:var(--glass-shadow);
+}
+html body #threat-info, html body .rv-side, html body .rv-lock-card,
+html body .feed-panel, html body .chat-panel, html body #info-view, html body #uas-panel{
+    background-color:var(--glass-strong);
+    background-image:linear-gradient(180deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,.02) 30%, rgba(255,255,255,0) 100%);
+    -webkit-backdrop-filter:blur(48px) saturate(190%); backdrop-filter:blur(48px) saturate(190%);
+    box-shadow:var(--glass-shadow);
+}
+html body .iv-head{ background:linear-gradient(180deg, rgba(26,31,29,.75) 60%, rgba(26,31,29,0)); -webkit-backdrop-filter:blur(20px); backdrop-filter:blur(20px); }
+html body .top-nav{ background-color:rgba(28,33,31,.55); border-radius:34px; }
+html body .iv-card, html body .iv-faq, html body .feed-item, html body .uas-group, html body .ti-stat, html body .rp-status, html body .msg-block{
+    background-color:rgba(255,255,255,.07); box-shadow:inset 0 .5px 0 rgba(255,255,255,.14);
+}
+html body .ti-variant-btn{ background-color:rgba(255,255,255,.08); }
+
+/* ---------- ТИПОГРАФІКА (великі заголовки як в iOS) ---------- */
+.feed-header h2, .chat-head h2, .iv-head h2, .uas-head h2{
+    font-size:28px; font-weight:800; letter-spacing:-.035em; text-transform:lowercase; }
+.feed-header h2::first-letter, .chat-head h2::first-letter, .iv-head h2::first-letter, .uas-head h2::first-letter{ text-transform:uppercase; }
+.iv-wrap h2{ font-weight:700; }
+.ti-title{ font-size:17px; font-weight:700; letter-spacing:-.02em; }
+
+/* ---------- ПРИГНІЧЕННЯ + ПРУЖИНА ---------- */
+.nav-item, .toolbar button, .btn-ghost, .rp-btn, .iv-btns a, .iv-btns button, .iv-chip, .uas-chips button, .search-toggle-btn,
+.feed-item, .iv-card, .uas-map, .ti-variant-btn, .ti-close, .feed-close, .uas-x, .chat-close{
+    transition:transform .45s var(--spring), background-color .25s ease, color .25s ease, box-shadow .25s ease, opacity .25s ease;
+    -webkit-tap-highlight-color:transparent; }
+.nav-item:active, .toolbar button:active, .btn-ghost:active, .rp-btn:active, .iv-btns a:active, .iv-btns button:active,
+.iv-chip:active, .uas-chips button:active, .search-toggle-btn:active, .ti-variant-btn:active{ transform:scale(.92); transition-duration:.12s; }
+.feed-item:active, .iv-card:active, .uas-map:active{ transform:scale(.975); transition-duration:.12s; }
+html body .toolbar button:active{ transform:scale(.86); }
+html body .nav-item:hover{ transform:translateY(-1px); }
+html body .nav-item:active{ transform:scale(.9); }
+
+/* ---------- ДОК: ковзний індикатор ---------- */
+.top-nav{ isolation:isolate; }
+.dock-ind{ position:absolute; left:0; top:0; z-index:0; border-radius:26px; pointer-events:none; opacity:0;
+    background:linear-gradient(180deg, rgba(255,255,255,.34), rgba(255,255,255,.16));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.45), inset 0 0 0 .5px rgba(255,255,255,.3), 0 6px 18px rgba(0,0,0,.25);
+    transition:transform .6s var(--bounce), width .6s var(--bounce), height .6s var(--bounce), opacity .3s ease; }
+html body .nav-item{ position:relative; z-index:1; }
+html body .nav-item.active, html body .nav-item.active:hover{ background:transparent; box-shadow:none; color:var(--accent); }
+html body .nav-item.active svg{ filter:drop-shadow(0 0 6px rgba(61,255,46,.5)); }
+html body .nav-item.active svg, html body .nav-item svg{ transition:transform .5s var(--bounce), filter .3s; }
+html body .nav-item.active svg{ transform:scale(1.12); }
+
+/* ---------- ПЕРЕМИКАЧІ iOS ---------- */
+html body .uas-sw{ width:51px; height:31px; }
+html body .uas-sw i{ background:rgba(120,120,128,.36); transition:background-color .3s ease; }
+html body .uas-sw i::after{ width:27px; height:27px; top:2px; left:2px; background:#fff;
+    box-shadow:0 3px 8px rgba(0,0,0,.35), 0 1px 1px rgba(0,0,0,.2); transition:transform .4s var(--bounce), width .2s ease; }
+html body .uas-sw input:checked + i{ background:var(--ios-green); }
+html body .uas-sw input:checked + i::after{ background:#fff; transform:translateX(20px); }
+html body .uas-sw input:active + i::after{ width:33px; }
+html body .uas-sw input:checked:active + i::after{ transform:translateX(14px); }
+html body .uas-chips{ background:rgba(118,118,128,.24); padding:2px; border-radius:11px; gap:2px; }
+html body .uas-chips button{ border-radius:9px; background:transparent; font-weight:600; }
+html body .uas-chips button.on{ background:rgba(255,255,255,.92); color:#111; box-shadow:0 3px 8px rgba(0,0,0,.28); }
+
+/* ---------- ПОЛЯ ---------- */
+html body .search-wrap input{ background-color:rgba(118,118,128,.28); }
+html body .search-wrap input::placeholder{ color:rgba(235,235,245,.5); }
+html body .rp-input, html body .chat-input-row input, html body #nick-field{ background-color:rgba(118,118,128,.24); }
+html body .btn-support{ color:#ff8a82; } html body .btn-support svg{ fill:#ff6961; }
+html body .btn-telegram{ color:#7cc4ff; }
+html body .rp-btn.primary, html body .iv-btns .primary{ box-shadow:inset 0 1px 0 rgba(255,255,255,.4); }
+
+/* ---------- РУХ: поява панелей ---------- */
+html body .feed-panel, html body .chat-panel, html body #info-view, html body #uas-panel{
+    opacity:0; transform:translateX(calc(100% + 40px)) scale(.96); filter:blur(8px);
+    transition:transform .65s var(--spring), opacity .35s ease, filter .5s ease, visibility 0s linear .65s; }
+html body .feed-panel.open, html body .chat-panel.open, html body.tab-info #info-view, html body #uas-panel.open{
+    opacity:1; transform:none; filter:none; transition-delay:0s; }
+@keyframes panelIn{
+    0%{ opacity:0; transform:translateY(22px) scale(.88); filter:blur(14px); }
+    55%{ opacity:1; transform:translateY(-3px) scale(1.015); filter:blur(0); }
+    100%{ opacity:1; transform:none; filter:blur(0); } }
+@keyframes panelOut{
+    0%{ opacity:1; transform:none; filter:blur(0); }
+    100%{ opacity:0; transform:translateY(14px) scale(.92); filter:blur(10px); } }
+.panel-opening{ animation:panelIn .6s var(--spring) both; }
+.panel-closing{ animation:panelOut .28s ease-in both; }
+
+@keyframes iosRise{ from{ opacity:0; transform:translateY(18px) scale(.97); filter:blur(6px); } to{ opacity:1; transform:none; filter:blur(0); } }
+body.tab-info #info-view .iv-hero, body.tab-info #info-view .iv-badge, body.tab-info #info-view h1, body.tab-info #info-view .iv-lead{ animation:iosRise .7s var(--spring) backwards .1s; }
+body.tab-info #info-view .iv-card, body.tab-info #info-view .iv-faq, body.tab-info #info-view .iv-promo{ animation:iosRise .7s var(--spring) backwards; }
+body.tab-info #info-view .iv-grid > :nth-child(1){ animation-delay:.18s; } body.tab-info #info-view .iv-grid > :nth-child(2){ animation-delay:.24s; }
+body.tab-info #info-view .iv-grid > :nth-child(3){ animation-delay:.30s; } body.tab-info #info-view .iv-grid > :nth-child(n+4){ animation-delay:.36s; }
+
+@keyframes iosDrop{ from{ opacity:0; transform:translateY(-16px) scale(.94); filter:blur(8px); } to{ opacity:1; transform:none; filter:blur(0); } }
+@keyframes iosUp{ from{ opacity:0; transform:translateY(40px) scale(.9); filter:blur(8px); } to{ opacity:1; transform:translateX(var(--tx,0)) none; filter:blur(0); } }
+.brand{ animation:iosDrop .8s var(--spring) backwards .1s; }
+.search-wrap{ animation:iosDrop .8s var(--spring) backwards .18s; }
+.header-actions > *{ animation:iosDrop .8s var(--spring) backwards .26s; }
+.toolbar{ animation:iosDrop .8s var(--spring) backwards .4s; }
+.status-bar, .viewer-badge{ animation:iosDrop .8s var(--spring) backwards .5s; }
+.top-nav{ animation:iosDock .9s var(--spring) backwards .3s; }
+@keyframes iosDock{ from{ opacity:0; margin-bottom:-60px; filter:blur(10px); } to{ opacity:1; margin-bottom:0; filter:blur(0); } }
+body.tab-radar #radar-view{ animation:iosRise .6s var(--spring) backwards; }
+
+/* ---------- ГЛИБИНА: карта розмивається за відкритими панелями ---------- */
+#map{ transition:filter .6s ease, transform .8s var(--spring); }
+body.tab-info #map, body:has(.feed-panel.open) #map, body:has(.chat-panel.open) #map, body:has(#uas-panel.open) #map{
+    filter:blur(7px) brightness(.62) saturate(.9); transform:scale(1.015); }
+.feed-overlay.open, #info-overlay, .chat-overlay{ -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); transition:background .4s ease; }
+
+/* ---------- ПРЕЛОАДЕР ---------- */
+#preloader{ transition:opacity .7s ease, visibility .7s, backdrop-filter .7s; }
+#preloader.done{ -webkit-backdrop-filter:blur(30px); backdrop-filter:blur(30px); }
+.pl-logo{ animation:iosRise 1s var(--spring) backwards; }
+.pl-panel{ animation:iosRise 1s var(--spring) backwards .15s; background-image:linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.02)) !important; -webkit-backdrop-filter:blur(30px); backdrop-filter:blur(30px); box-shadow:var(--glass-shadow); }
+.pl-links, .pl-tip{ animation:iosRise 1s var(--spring) backwards .3s; }
+.pl-bar i{ transition:width .7s var(--spring); }
+
+/* ---------- ПІДПИСИ ТА КАРТА ---------- */
+.leaflet-tooltip.raion-tip{ background:rgba(30,35,33,.6); -webkit-backdrop-filter:blur(24px) saturate(180%); backdrop-filter:blur(24px) saturate(180%); box-shadow:var(--glass-shadow); border-radius:14px; }
+.leaflet-container{ transition:opacity .4s; }
+
+@media (max-width:720px){
+    html body .top-nav{ border-radius:32px; }
+    .feed-header h2, .chat-head h2, .iv-head h2, .uas-head h2{ font-size:26px; }
+    html body .feed-panel, html body .chat-panel, html body #info-view, html body #uas-panel{ transform:translateY(calc(100% + 30px)) scale(.97); }
+    html body .feed-panel.open, html body .chat-panel.open, html body.tab-info #info-view, html body #uas-panel.open{ transform:none; }
+    .toolbar{ --tx:0; }
+}
+@media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{ animation-duration:.01s !important; animation-delay:0s !important; transition-duration:.01s !important; }
+    body.tab-info #map, body:has(.feed-panel.open) #map{ transform:none; }
+}
+</style>
+<script id="ua-ios">
+/* ковзний «скляний» індикатор активного розділу в доку */
+(function(){
+  var nav=document.querySelector('.top-nav'); if(!nav) return;
+  var ind=document.createElement('i'); ind.className='dock-ind'; nav.insertBefore(ind, nav.firstChild);
+  function move(){
+    var a=nav.querySelector('.nav-item.active');
+    if(!a){ ind.style.opacity=0; return; }
+    ind.style.opacity=1; ind.style.width=a.offsetWidth+'px'; ind.style.height=a.offsetHeight+'px';
+    ind.style.transform='translate('+a.offsetLeft+'px,'+a.offsetTop+'px)';
+  }
+  new MutationObserver(move).observe(nav,{subtree:true,attributes:true,attributeFilter:['class']});
+  window.addEventListener('resize',move);
+  if(document.fonts&&document.fonts.ready) document.fonts.ready.then(move);
+  setTimeout(move,400); setTimeout(move,1500); move();
+})();
+</script>
 </body>
 </html>
